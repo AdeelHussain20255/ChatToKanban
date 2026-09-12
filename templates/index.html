@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatToKanban</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Spinner ────────────────────────────────────────────────────────────── -->
+<div id="spinner" class="spinner-overlay" style="display:none;">
+    <div class="spinner"></div>
+    <div class="spinner-text">Analyzing chat with Gemini...</div>
+</div>
+
+<!-- ── Modal ──────────────────────────────────────────────────────────────── -->
+<div id="modalOverlay" class="modal-overlay">
+    <div class="modal">
+        <h2>Edit Task</h2>
+        <div class="form-group">
+            <label>Title</label>
+            <input type="text" id="modalTitle">
+        </div>
+        <div class="form-group">
+            <label>Assignee</label>
+            <input type="text" id="modalAssignee">
+        </div>
+        <div class="form-group">
+            <label>Deadline</label>
+            <input type="text" id="modalDeadline" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="form-group">
+            <label>Priority</label>
+            <select id="modalPriority">
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Low">Low</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Status</label>
+            <select id="modalStatus">
+                <option value="To Do">To Do</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Done">Done</option>
+            </select>
+        </div>
+        <div class="modal-actions">
+            <button id="modalSave" class="btn btn-primary btn-sm">Save Changes</button>
+            <button id="modalClose" class="btn btn-secondary btn-sm">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Main App ───────────────────────────────────────────────────────────── -->
+<div class="container">
+
+    <!-- Header -->
+    <div class="main-header">
+        <h1 class="brand-title">ChatToKanban</h1>
+        <p class="brand-subtitle">Group Chat Task & Announcement Extractor</p>
+    </div>
+
+    <!-- Upload Zone -->
+    <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">📂</div>
+        <p>Drag & drop your WhatsApp <strong>.txt</strong> export here, or click to browse</p>
+        <p style="font-size:0.8rem;color:#718096;margin-top:6px;">Supports iOS & Android WhatsApp export formats</p>
+        <input type="file" id="fileInput" accept=".txt">
+        <p id="fileName" style="margin-top:10px;color:#FF5500;font-weight:600;font-size:0.9rem;"></p>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls-bar">
+        <div class="control-group">
+            <label>Date Range</label>
+            <select id="dateRange">
+                <option value="Last 3 Days">Last 3 Days</option>
+                <option value="Last 7 Days" selected>Last 7 Days</option>
+                <option value="Last 14 Days">Last 14 Days</option>
+                <option value="Last 30 Days">Last 30 Days</option>
+                <option value="All Time">All Time</option>
+            </select>
+        </div>
+        <button id="analyzeBtn" class="btn btn-primary">⚡ Analyze Chat</button>
+    </div>
+
+    <!-- Error -->
+    <div id="errorBanner" class="error-banner" style="display:none;"></div>
+
+    <!-- Results -->
+    <div id="resultsSection" style="display:none;">
+
+        <!-- Metrics -->
+        <div class="metrics-row">
+            <div class="metric-card">
+                <div class="metric-label">Total Messages</div>
+                <div class="metric-value" id="metricTotal">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Actionable Tasks</div>
+                <div class="metric-value" id="metricTasks">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Announcements</div>
+                <div class="metric-value" id="metricAnnounce">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Noise / Fluff</div>
+                <div class="metric-value" id="metricFluff">0</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="tabKanban">📌 Kanban Board</button>
+            <button class="tab-btn" data-tab="tabAnnounce">📢 Announcements</button>
+            <button class="tab-btn" data-tab="tabExport">📊 Summary & Export</button>
+        </div>
+
+        <!-- Tab: Kanban -->
+        <div id="tabKanban" class="tab-content active">
+            <div class="kanban-board">
+                <div class="kanban-column">
+                    <div class="column-header">
+                        <span class="column-title">📝 To Do</span>
+                        <span class="column-count" id="todoCount">0</span>
+                    </div>
+                    <div class="task-list" id="todoList"></div>
+                </div>
+                <div class="kanban-column">
+                    <div class="column-header">
+                        <span class="column-title">🔄 In Progress</span>
+                        <span class="column-count" id="wipCount">0</span>
+                    </div>
+                    <div class="task-list" id="wipList"></div>
+                </div>
+                <div class="kanban-column">
+                    <div class="column-header">
+                        <span class="column-title">✅ Done</span>
+                        <span class="column-count" id="doneCount">0</span>
+                    </div>
+                    <div class="task-list" id="doneList"></div>
+                </div>
+            </div>
+
+            <!-- Add Manual Task -->
+            <div style="margin-top:20px;">
+                <h3 class="section-title"><span class="accent">+</span> Add Manual Task</h3>
+                <div class="controls-bar" style="margin-top:8px;">
+                    <div class="control-group">
+                        <label>Title</label>
+                        <input type="text" id="newTaskTitle" placeholder="Task title">
+                    </div>
+                    <div class="control-group">
+                        <label>Assignee</label>
+                        <input type="text" id="newTaskAssignee" placeholder="Name">
+                    </div>
+                    <div class="control-group">
+                        <label>Deadline</label>
+                        <input type="text" id="newTaskDeadline" placeholder="YYYY-MM-DD">
+                    </div>
+                    <div class="control-group">
+                        <label>Priority</label>
+                        <select id="newTaskPriority">
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Low">Low</option>
+                        </select>
+                    </div>
+                    <button id="addTaskBtn" class="btn btn-secondary btn-sm" style="align-self:flex-end;">Add Task</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Announcements -->
+        <div id="tabAnnounce" class="tab-content">
+            <div id="announceList" class="announce-list"></div>
+        </div>
+
+        <!-- Tab: Summary & Export -->
+        <div id="tabExport" class="tab-content">
+            <h3 class="section-title"><span class="accent">📊</span> Group Activity Summary</h3>
+            <div class="summary-box">
+                <p id="summaryText"></p>
+            </div>
+
+            <h3 class="section-title"><span class="accent">📈</span> Analytics</h3>
+            <div class="charts-row">
+                <div class="chart-panel">
+                    <h3>Tasks per Assignee</h3>
+                    <canvas id="assigneeChart"></canvas>
+                </div>
+                <div class="chart-panel">
+                    <h3>Actionable vs Noise</h3>
+                    <canvas id="ratioChart"></canvas>
+                </div>
+            </div>
+
+            <h3 class="section-title"><span class="accent">📥</span> Export</h3>
+            <div class="export-bar">
+                <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportJSON()">⬇ JSON</button>
+                <button class="btn btn-secondary btn-sm" onclick="exportMarkdown()">⬇ Markdown</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
